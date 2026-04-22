@@ -1,41 +1,38 @@
 // Copyright (c) 2026 yuki-is-taka. Licensed under the MIT License.
 //
 // Fuzzy resolution of a user-provided editor selector against the current
-// list of listening editors.
+// list of discovered editors.
 
-import type { DiscoveredEditor } from './discovery.js';
+export interface EditorSummaryLite {
+  project_name: string;
+  project_path: string;
+  nodeId: string;
+}
 
-export function resolveEditor(
-  all: DiscoveredEditor[],
+export function resolveEditor<E extends EditorSummaryLite>(
+  all: E[],
   selector: string | undefined,
-): DiscoveredEditor {
-  const listening = all.filter((e) => e.port > 0);
-
-  if (listening.length === 0) {
+): E {
+  if (all.length === 0) {
     throw new Error(
-      'No UE editor is currently listening for MCP. Make sure the UEMCP plugin is loaded and its TCP server has finished starting up.',
+      'No UE editor discovered yet. Make sure the editor is running with Python Remote Execution enabled (Project Settings → Plugins → Python → "Remote Execution").',
     );
   }
 
   if (selector === undefined || selector === '') {
-    if (listening.length === 1) {
-      return listening[0]!;
-    }
-    const names = listening.map((e) => e.project_name).join(', ');
+    if (all.length === 1) return all[0]!;
+    const names = all.map((e) => e.project_name).join(', ');
     throw new Error(
-      `${listening.length} UE editors are listening. Provide an 'editor' argument to pick one. Candidates: ${names}`,
+      `${all.length} UE editors discovered. Specify 'editor' argument. Candidates: ${names}`,
     );
   }
 
   const lower = selector.toLowerCase();
 
-  const exact = listening.find((e) => e.project_name.toLowerCase() === lower);
+  const exact = all.find((e) => e.project_name.toLowerCase() === lower);
   if (exact) return exact;
 
-  const byPid = listening.find((e) => String(e.pid) === selector);
-  if (byPid) return byPid;
-
-  const subs = listening.filter(
+  const subs = all.filter(
     (e) =>
       e.project_name.toLowerCase().includes(lower) ||
       e.project_path.toLowerCase().includes(lower),
@@ -46,6 +43,6 @@ export function resolveEditor(
     throw new Error(`Selector "${selector}" matches multiple editors: ${names}`);
   }
 
-  const available = listening.map((e) => e.project_name).join(', ');
+  const available = all.map((e) => e.project_name).join(', ');
   throw new Error(`No editor matches "${selector}". Available: ${available}`);
 }
