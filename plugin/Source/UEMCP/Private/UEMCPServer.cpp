@@ -37,7 +37,26 @@ bool FUEMCPServer::Start(const FString& Host, int32 PreferredPort)
 	}
 
 	Listener->OnConnectionAccepted().BindRaw(this, &FUEMCPServer::HandleAccept);
-	ActualPort = Listener->GetLocalEndpoint().Port;
+
+	// GetLocalEndpoint() returns the *requested* endpoint (port 0 on auto-bind).
+	// Query the socket itself to get the actual OS-assigned port.
+	ActualPort = 0;
+	if (FSocket* const ListenSocket = Listener->GetSocket())
+	{
+		if (ISocketSubsystem* const SocketSubsystem = ISocketSubsystem::Get(PLATFORM_SOCKETSUBSYSTEM))
+		{
+			const TSharedRef<FInternetAddr> BoundAddr = SocketSubsystem->CreateInternetAddr();
+			ListenSocket->GetAddress(*BoundAddr);
+			ActualPort = BoundAddr->GetPort();
+		}
+	}
+	if (ActualPort == 0)
+	{
+		UE_LOG(LogUEMCP, Error, TEXT("UEMCP listener bound but failed to read back actual port"));
+		Listener->OnConnectionAccepted().Unbind();
+		Listener.Reset();
+		return false;
+	}
 
 	UE_LOG(LogUEMCP, Log, TEXT("UEMCP listener bound on %s:%d"), *Host, ActualPort);
 	return true;
