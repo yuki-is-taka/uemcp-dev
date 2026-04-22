@@ -3,6 +3,8 @@
 #include "UEMCPModule.h"
 #include "UEMCPDiscoveryFile.h"
 #include "UEMCPProtocol.h"
+#include "UEMCPServer.h"
+#include "UEMCPSettings.h"
 #include "Modules/ModuleManager.h"
 
 DEFINE_LOG_CATEGORY(LogUEMCP);
@@ -16,20 +18,42 @@ void FUEMCPModule::StartupModule()
 		UEMCP_PLUGIN_VERSION,
 		UEMCP_PROTOCOL_VERSION_STRING);
 
-	// Port 0 = not yet listening. The TCP listener lands in 0.2.
+	// Always write the discovery file so the shim can at least see the editor.
+	// Port=0 means "not yet listening"; we rewrite with the real port after
+	// the TCP server binds successfully below.
 	FUEMCPDiscoveryFile::Write(0);
 
-	// TODO(0.2): scan exposed UClasses and build tool registry.
-	// TODO(0.2): start TCP listener on loopback (OS-assigned port), rewrite discovery file with the real port.
+	const UUEMCPSettings* Settings = GetDefault<UUEMCPSettings>();
+	if (!Settings->bEnable)
+	{
+		UE_LOG(LogUEMCP, Log, TEXT("UEMCP disabled via settings; TCP server not started"));
+		return;
+	}
+
+	Server = MakeUnique<FUEMCPServer>();
+	if (Server->Start(Settings->ListenHost, Settings->PreferredPort))
+	{
+		FUEMCPDiscoveryFile::Write(Server->GetActualPort());
+	}
+	else
+	{
+		UE_LOG(LogUEMCP, Warning,
+			TEXT("UEMCP: TCP server failed to start on %s:%d. Discovery file left at port=0."),
+			*Settings->ListenHost, Settings->PreferredPort);
+		Server.Reset();
+	}
 }
 
 void FUEMCPModule::ShutdownModule()
 {
+	if (Server)
+	{
+		Server->Stop();
+		Server.Reset();
+	}
+
 	FUEMCPDiscoveryFile::Remove();
-
 	UE_LOG(LogUEMCP, Log, TEXT("UEMCP shutting down"));
-
-	// TODO(0.2): close TCP listener, drop client connections.
 }
 
 FUEMCPModule& FUEMCPModule::Get()

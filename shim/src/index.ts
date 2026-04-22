@@ -6,15 +6,20 @@
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+import { z } from 'zod';
 
 import { Discovery } from './discovery.js';
+import { EditorPool } from './editorPool.js';
 import { getDiscoveryDir } from './paths.js';
 import { PROTOCOL_VERSION, SHIM_VERSION } from './protocol.js';
+import { resolveEditor } from './selector.js';
 
 async function main(): Promise<void> {
   const discoveryDir = getDiscoveryDir();
   const discovery = new Discovery(discoveryDir);
   await discovery.start();
+
+  const pool = new EditorPool();
 
   const server = new McpServer({
     name: 'uemcp',
@@ -56,6 +61,33 @@ async function main(): Promise<void> {
     },
   );
 
+  server.tool(
+    'execute_python',
+    'Execute Python code inside an Unreal Editor via UEMCP. Runs on the ' +
+      'editor game thread with full access to the `unreal` module and any ' +
+      'project-local scripting libraries. Returns { success, command_result, ' +
+      'log_output }. Use `editor` to target a specific UE when multiple are ' +
+      'running; omit when only one editor is listening.',
+    {
+      code: z.string().describe('Python source to execute. Multi-line supported.'),
+      editor: z
+        .string()
+        .optional()
+        .describe('Editor selector: project name, PID, or substring match.'),
+    },
+    async ({ code, editor: selector }) => {
+      const target = resolveEditor(discovery.getEditors(), selector);
+      const client = await pool.getOrOpen(target);
+      const result = await client.call('mcp.call_tool', {
+        name: 'execute_python',
+        arguments: { code },
+      });
+      return {
+        content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+      };
+    },
+  );
+
   const transport = new StdioServerTransport();
   await server.connect(transport);
 
@@ -64,6 +96,7 @@ async function main(): Promise<void> {
   );
 
   const shutdown = async (): Promise<void> => {
+    pool.closeAll();
     await discovery.stop();
     await server.close();
     process.exit(0);
