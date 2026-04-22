@@ -11,6 +11,14 @@ DEFINE_LOG_CATEGORY(LogUEMCP);
 
 #define LOCTEXT_NAMESPACE "FUEMCPModule"
 
+FUEMCPModule::FUEMCPModule() = default;
+FUEMCPModule::~FUEMCPModule() = default;
+
+FUEMCPServer* FUEMCPModule::GetServer() const
+{
+	return Server.Get();
+}
+
 void FUEMCPModule::StartupModule()
 {
 	UE_LOG(LogUEMCP, Log,
