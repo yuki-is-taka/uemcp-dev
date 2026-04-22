@@ -1,0 +1,18 @@
+{
+  "name": "uemcp-dev",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Development monorepo for UEMCP (UE plugin + uemcp Node shim).",
+  "workspaces": [
+    "shim"
+  ],
+  "scripts": {
+    "build": "npm run build -w @yuki-is-taka/uemcp",
+    "typecheck": "npm run typecheck -w @yuki-is-taka/uemcp",
+    "clean": "npm run clean -w @yuki-is-taka/uemcp"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "license": "MIT"
+}

@@ -1,0 +1,29 @@
+{
+	"FileVersion": 3,
+	"Version": 1,
+	"VersionName": "0.1.0",
+	"FriendlyName": "UEMCP",
+	"Description": "Editor-only MCP server that exposes UFUNCTION(BlueprintCallable) methods to Claude Code or other MCP clients. Pairs with the @yuki-is-taka/uemcp Node shim for discovery and multi-editor support.",
+	"Category": "Editor",
+	"CreatedBy": "yuki-is-taka",
+	"CreatedByURL": "https://github.com/yuki-is-taka",
+	"DocsURL": "https://github.com/yuki-is-taka/uemcp-dev",
+	"MarketplaceURL": "",
+	"SupportURL": "https://github.com/yuki-is-taka/uemcp-dev/issues",
+	"EngineVersion": "5.7.0",
+	"CanContainContent": false,
+	"Installed": false,
+	"Modules": [
+		{
+			"Name": "UEMCP",
+			"Type": "Editor",
+			"LoadingPhase": "Default"
+		}
+	],
+	"Plugins": [
+		{
+			"Name": "PythonScriptPlugin",
+			"Enabled": true
+		}
+	]
+}
