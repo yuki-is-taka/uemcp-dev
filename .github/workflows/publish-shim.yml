@@ -11,13 +11,15 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      id-token: write
+      id-token: write  # required for npm Trusted Publishing (OIDC)
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          # Node 22 ships with npm >= 11.5.1, which is required for Trusted
+          # Publishing / provenance attestation.
+          node-version: '22'
           registry-url: 'https://registry.npmjs.org'
 
       - name: Install dependencies
@@ -30,6 +32,7 @@ jobs:
         run: npm run build -w @yuki-is-taka/uemcp
 
       - name: Publish to npm
-        run: npm publish -w @yuki-is-taka/uemcp --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        # No NODE_AUTH_TOKEN — npm verifies GitHub's OIDC token against the
+        # Trusted Publisher registered on the package. --provenance attests
+        # the build came from this repo/workflow/commit.
+        run: npm publish -w @yuki-is-taka/uemcp --access public --provenance

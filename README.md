@@ -1,64 +1,57 @@
-# uemcp (dev monorepo)
+# uemcp
 
-Development home for **UEMCP** — a UE Editor plugin that exposes
-`UFUNCTION(BlueprintCallable)` methods to Claude Code and other MCP clients,
-paired with a Node-based stdio MCP server (`uemcp`) that discovers running
-editors and proxies requests to the right one.
+stdio MCP server that bridges Claude Code (and other MCP clients) to running
+Unreal Engine editors. Claude spawns a thin launcher per session; on first use
+the launcher auto-starts a singleton local HTTP daemon that holds the shared
+connection to UE via its built-in Python Remote Execution.
 
-## Why this exists
+No UE-side plugin is required. The editor just needs Python Script Plugin
+enabled with "Remote Execution" on (Project Settings → Plugins → Python).
 
-Claude Code's default Unreal MCP integration goes through UE's built-in Python
-Remote Execution, which has two pain points: no auto-reconnect after editor
-restart, and a hard "one MCP client per UE editor" exclusion that makes
-multi-session / multi-editor workflows awkward. This project replaces the
-transport entirely with a plugin-hosted MCP endpoint + a thin discovery shim,
-giving transparent reconnect, multi-editor awareness, and natural-language
-editor selection.
-
-## Repository layout
+## Architecture
 
 ```
-.
-├── plugin/                 # UE Editor plugin (C++), module name: UEMCP
-│   ├── UEMCP.uplugin
-│   └── Source/UEMCP/
-├── shim/                   # Node stdio MCP server (TypeScript), CLI: uemcp
-│   ├── package.json
-│   └── src/
-├── docs/
-│   └── PROTOCOL.md         # shared contract between plugin and shim
-└── .github/workflows/      # release automation
+Claude Code session A ─ stdio ─→ launcher A ┐
+Claude Code session B ─ stdio ─→ launcher B ┼─ HTTP (127.0.0.1:8877) ─→ uemcp-daemon
+Claude Code session C ─ stdio ─→ launcher C ┘                               ↓
+                                                              UDP multicast (239.0.0.1:6766)
+                                                                            ↓
+                                                          UE editor(s) with Python RE enabled
 ```
 
-**This repo is the primary development surface.** The plugin and shim are
-paired — protocol changes, tool schema changes, and breaking revisions are
-expected to land as single PRs touching both sides. Keep them versioned
-together with a single semver tag.
+- **launcher**: registered in Claude Code as a stdio MCP server. Forwards tool
+  calls to the daemon; if no daemon is reachable, spawns one detached.
+- **daemon**: singleton HTTP server on loopback. Holds the Python RE client,
+  serializes commands, self-exits after 30 minutes of inactivity.
 
-## Release pipeline (subtree split)
+Both are published in a single npm package `@yuki-is-taka/uemcp`, routed by
+argv from the same bin entry.
 
-Tagging `vX.Y.Z` fires two workflows:
-
-1. **`publish-plugin.yml`** — `git subtree split --prefix=plugin` and force-push
-   the split branch to the consumer repo
-   `https://github.com/yuki-is-taka/uemcp.git` as `main`. Users clone that
-   repo directly into `Plugins/UEMCP`.
-2. **`publish-shim.yml`** — `npm publish` from `shim/` to
-   `@yuki-is-taka/uemcp`.
-
-Both are consumers of the same commit, same tag.
-
-## Installation (user-facing)
+## Installation
 
 ```bash
-# In your UE project
-cd MyProject/Plugins
-git clone https://github.com/yuki-is-taka/uemcp.git UEMCP
+npm install -g @yuki-is-taka/uemcp
+```
 
-# In your global Claude Code MCP config (~/.claude/settings.json)
+Global Claude Code MCP config (`~/.claude/settings.json` or equivalent):
+
+```json
 {
   "mcpServers": {
-    "unreal": {
+    "uemcp": {
+      "type": "stdio",
+      "command": "uemcp"
+    }
+  }
+}
+```
+
+Or, without global install:
+
+```json
+{
+  "mcpServers": {
+    "uemcp": {
       "type": "stdio",
       "command": "cmd",
       "args": ["/c", "npx", "-y", "@yuki-is-taka/uemcp"]
@@ -67,31 +60,69 @@ git clone https://github.com/yuki-is-taka/uemcp.git UEMCP
 }
 ```
 
-No per-project config needed — the shim auto-discovers running editors via
-`%LOCALAPPDATA%/UnrealMcp/instances/`.
+No per-project config is needed — the daemon discovers every running UE editor
+(with Python RE enabled) on the same loopback via UDP multicast.
 
-After a global install (`npm i -g @yuki-is-taka/uemcp`) the config simplifies to:
+## Configuration
 
-```json
-{ "mcpServers": { "unreal": { "type": "stdio", "command": "uemcp" } } }
-```
+Environment variables (read by both launcher and daemon):
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `UEMCP_HOST` | `127.0.0.1` | Daemon bind + launcher probe host |
+| `UEMCP_PORT` | `8877` | Daemon TCP port |
+| `UEMCP_DAEMON_START_TIMEOUT_MS` | `10000` | How long the launcher waits for a spawned daemon to come up |
+| `UEMCP_IDLE_TIMEOUT_MS` | `1800000` | Daemon self-exit after this many ms of no HTTP activity (default 30 min) |
+
+## Tools exposed
+
+- `list_unreal_editors` — lists every running UE editor discovered on the
+  loopback multicast group. Empty list when none are running.
+- `execute_python` — runs Python code inside the selected UE editor's game
+  thread. Multi-line supported. Takes an optional `editor` selector (project
+  name, substring match) to pick between multiple running editors.
+
+Additional curated tools will be added as concrete needs surface.
 
 ## Development
 
 ```bash
-# Shim
-cd shim
+git clone https://github.com/yuki-is-taka/uemcp-dev.git
+cd uemcp-dev/shim
 npm install
 npm run build
 npm link                 # use the dev build in Claude Code
-
-# Plugin
-# Open the .uplugin in a UE project that has it under Plugins/UEMCP/, build via
-# IDE or Live Coding. Iteration cycle is UE-native.
 ```
 
-## Protocol compatibility
+The published npm package name is `@yuki-is-taka/uemcp`; this repo publishes
+it from `shim/` on tagged releases via `.github/workflows/publish-shim.yml`.
 
-See [docs/PROTOCOL.md](docs/PROTOCOL.md) for the wire contract. Tool schemas
-are discovered at runtime, so tool-level changes do not require a protocol
-version bump — only envelope / discovery-file / error-shape changes do.
+## Repository layout
+
+```
+.
+├── shim/                   # the npm package @yuki-is-taka/uemcp
+│   ├── package.json
+│   └── src/
+│       ├── index.ts        # bin entry; routes to launcher or daemon
+│       ├── launcher.ts     # stdio MCP server, forwards to daemon
+│       ├── daemon.ts       # HTTP API server
+│       ├── daemonClient.ts # launcher → daemon HTTP client
+│       ├── uePool.ts       # unreal-remote-execution wrapper
+│       ├── protocol.ts     # version + env-configurable constants
+│       └── selector.ts     # fuzzy editor selector
+└── .github/workflows/
+    ├── ci.yml              # typecheck + build on every push
+    └── publish-shim.yml    # npm publish on v* tags
+```
+
+## History
+
+Earlier iterations of this project included a custom UE Editor plugin that
+hosted its own MCP server via a bespoke TCP/JSON-RPC protocol. That approach
+was retired when review showed its stated advantages (UFUNCTION reflection
+auto-tooling, engine-side event push, transaction integration) were either
+rejected by follow-up design work or equally reachable through Python
+Remote Execution. The current design uses UE's stock Python RE + a Node
+daemon for fan-in, giving the same user-visible functionality with far less
+engine coupling.
