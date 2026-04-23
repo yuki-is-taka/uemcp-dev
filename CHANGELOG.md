@@ -5,7 +5,20 @@ All notable changes to `@yuki-is-taka/uemcp` are documented here.
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 versioning follows [SemVer](https://semver.org/).
 
-## [0.2.0] — Unreleased
+## [0.2.1] — Unreleased
+
+### Added
+- `list_unreal_editors` now returns a `hint` field when no editors are
+  discovered, pointing users at the Python Script Plugin "Remote Execution"
+  setting which is the most common cause.
+- Tool descriptions now explicitly mention the Python RE prerequisite so
+  coding agents can steer users toward the fix proactively.
+
+### Changed
+- Switched npm publishing from a long-lived token to Trusted Publishing
+  (OIDC) with `--provenance` attestation. First release published via OIDC.
+
+## [0.2.0] — 2026-04-22
 
 ### Changed
 - Replaced the UE-side plugin + custom TCP/JSON-RPC transport with a
@@ -34,5 +47,6 @@ versioning follows [SemVer](https://semver.org/).
 - Initial monorepo scaffolding with UE plugin + stdio shim + custom
   TCP/JSON-RPC protocol. Retired in 0.2.0.
 
-[0.2.0]: https://github.com/yuki-is-taka/uemcp-dev/compare/v0.1.0...HEAD
+[0.2.1]: https://github.com/yuki-is-taka/uemcp-dev/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/yuki-is-taka/uemcp-dev/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/yuki-is-taka/uemcp-dev/releases/tag/v0.1.0

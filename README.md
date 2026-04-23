@@ -5,8 +5,11 @@ Unreal Engine editors. Claude spawns a thin launcher per session; on first use
 the launcher auto-starts a singleton local HTTP daemon that holds the shared
 connection to UE via its built-in Python Remote Execution.
 
-No UE-side plugin is required. The editor just needs Python Script Plugin
-enabled with "Remote Execution" on (Project Settings → Plugins → Python).
+No UE-side plugin is required, but the editor must have **Python Script Plugin
+enabled with "Remote Execution" turned on** (Project Settings → Plugins → Python
+→ "Remote Execution"). Without that, no editor will be discoverable; the
+`list_unreal_editors` tool will return an empty list with a troubleshooting
+`hint` pointing at this setting.
 
 ## Architecture
 

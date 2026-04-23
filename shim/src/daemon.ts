@@ -95,8 +95,16 @@ async function handleRequest(
 
   if (method === 'GET' && url === '/api/list_editors') {
     const editors = pool.listEditors();
+    const payload: Record<string, unknown> = {
+      count: editors.length,
+      editors,
+    };
+    if (editors.length === 0) {
+      payload.hint =
+        "No editors discovered. If UE is running, verify Python Script Plugin is enabled and 'Remote Execution' is on (Project Settings → Plugins → Python → 'Remote Execution'). uemcp relies on UE's built-in Python Remote Execution for UDP multicast discovery.";
+    }
     res.writeHead(200, { 'content-type': 'application/json' });
-    res.end(JSON.stringify({ count: editors.length, editors }));
+    res.end(JSON.stringify(payload));
     return;
   }
 

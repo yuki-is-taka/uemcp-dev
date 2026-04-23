@@ -30,9 +30,12 @@ export async function runLauncher(): Promise<void> {
   server.tool(
     'list_unreal_editors',
     'List currently running Unreal Engine editors discovered via UDP multicast. ' +
-      'Each entry includes project name/path, engine version, and the node id that ' +
-      'identifies the editor for subsequent tool calls. Use this to identify which ' +
-      'editor to target when more than one is running.',
+      'Each entry includes project name/path, engine version, and the node id. ' +
+      'Requires UE to have Python Script Plugin enabled with "Remote Execution" ' +
+      'turned on (Project Settings → Plugins → Python). If UE is running but this ' +
+      'tool returns an empty list, that setting is the most likely cause — the ' +
+      'response includes a `hint` field in that case. Use this to identify which ' +
+      'editor to target with other tools when more than one is running.',
     {},
     async () => {
       const result = await daemonGet('/api/list_editors');
@@ -46,9 +49,10 @@ export async function runLauncher(): Promise<void> {
     'execute_python',
     'Execute Python code inside an Unreal Editor. Runs on the game thread with ' +
       'full access to the `unreal` module and any project-local scripting libraries ' +
-      '(e.g. PyEditorTools). Returns { success, command_result, log_output }. Use ' +
-      '`editor` to target a specific UE when multiple are running; omit when only ' +
-      'one editor is running.',
+      '(e.g. PyEditorTools). Returns { success, command_result, log_output }. ' +
+      'Requires the target UE editor to have Python Script Plugin enabled with ' +
+      '"Remote Execution" on. Use `editor` to target a specific UE when multiple ' +
+      'are running; omit when only one editor is running.',
     {
       code: z.string().describe('Python source to execute. Multi-line supported.'),
       editor: z

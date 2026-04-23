@@ -6,11 +6,11 @@
 export const PROTOCOL_VERSION = {
   major: 0,
   minor: 2,
-  patch: 0,
-  string: '0.2.0',
+  patch: 1,
+  string: '0.2.1',
 } as const;
 
-export const SHIM_VERSION = '0.2.0';
+export const SHIM_VERSION = '0.2.1';
 
 export const DAEMON_HOST = process.env.UEMCP_HOST ?? '127.0.0.1';
 export const DAEMON_PORT = Number(process.env.UEMCP_PORT ?? 8877);
