@@ -17,8 +17,13 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: '22'
-          registry-url: 'https://registry.npmjs.org'
+          # Node 24 ships with npm >= 11, which is required for Trusted
+          # Publishing / provenance attestation. Node 22 LTS is still on
+          # npm 10 and does not support OIDC publishing.
+          node-version: '24'
+          # Deliberately NOT setting registry-url: that would write a
+          # placeholder auth token to .npmrc and interfere with the OIDC
+          # exchange.
 
       - name: Print npm version
         run: npm --version
