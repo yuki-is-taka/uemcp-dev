@@ -1,20 +1,19 @@
 // Copyright (c) 2026 yuki-is-taka. Licensed under the MIT License.
 //
 // Per-Claude-session stdio MCP server. Tool handlers forward to the singleton
-// daemon over HTTP; if the daemon isn't running, this spawns it detached.
-
-import { spawn } from 'node:child_process';
-import http from 'node:http';
+// daemon over HTTP; if the daemon isn't running, daemonLifecycle spawns it
+// detached and daemonClient retries once on network-level failures.
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
 
+import { ensureDaemonAlive } from './daemonLifecycle.js';
 import { daemonGet, daemonPost } from './daemonClient.js';
 import {
   DAEMON_HOST,
   DAEMON_PORT,
-  DAEMON_START_TIMEOUT_MS,
+  MAX_WAIT_MS,
   PROTOCOL_VERSION,
   SHIM_VERSION,
 } from './protocol.js';
@@ -35,10 +34,23 @@ export async function runLauncher(): Promise<void> {
       'turned on (Project Settings → Plugins → Python). If UE is running but this ' +
       'tool returns an empty list, that setting is the most likely cause — the ' +
       'response includes a `hint` field in that case. Use this to identify which ' +
-      'editor to target with other tools when more than one is running.',
-    {},
-    async () => {
-      const result = await daemonGet('/api/list_editors');
+      'editor to target with other tools when more than one is running. Pass ' +
+      '`wait_ms` to block up to that many milliseconds for an editor to appear ' +
+      '(useful right after launching UE).',
+    {
+      wait_ms: z
+        .number()
+        .int()
+        .min(0)
+        .max(MAX_WAIT_MS)
+        .optional()
+        .describe(
+          'If set, block up to this many ms for at least one editor to be discovered before returning. Capped at the daemon-side max.',
+        ),
+    },
+    async ({ wait_ms }) => {
+      const query = wait_ms ? `?wait_ms=${wait_ms}` : '';
+      const result = await daemonGet(`/api/list_editors${query}`);
       return {
         content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
       };
@@ -52,7 +64,9 @@ export async function runLauncher(): Promise<void> {
       '(e.g. PyEditorTools). Returns { success, command_result, log_output }. ' +
       'Requires the target UE editor to have Python Script Plugin enabled with ' +
       '"Remote Execution" on. Use `editor` to target a specific UE when multiple ' +
-      'are running; omit when only one editor is running.',
+      'are running; omit when only one editor is running. The daemon waits up to ' +
+      '~2 s by default for discovery if no editors are yet visible, to absorb the ' +
+      'race right after UE launch; override with `wait_ms`.',
     {
       code: z.string().describe('Python source to execute. Multi-line supported.'),
       editor: z
@@ -61,9 +75,21 @@ export async function runLauncher(): Promise<void> {
         .describe(
           'Editor selector: project name, substring of project name, or substring of project path.',
         ),
+      wait_ms: z
+        .number()
+        .int()
+        .min(0)
+        .max(MAX_WAIT_MS)
+        .optional()
+        .describe(
+          'Override the default wait-for-discovery window (milliseconds) before failing with "no editor discovered".',
+        ),
     },
-    async ({ code, editor }) => {
-      const result = await daemonPost('/api/run_python', { code, editor });
+    async ({ code, editor, wait_ms }) => {
+      const payload: Record<string, unknown> = { code };
+      if (editor !== undefined) payload.editor = editor;
+      if (wait_ms !== undefined) payload.wait_ms = wait_ms;
+      const result = await daemonPost('/api/run_python', payload);
       return {
         content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
       };
@@ -76,60 +102,4 @@ export async function runLauncher(): Promise<void> {
   process.stderr.write(
     `uemcp launcher ${SHIM_VERSION} (protocol ${PROTOCOL_VERSION.string}) → daemon http://${DAEMON_HOST}:${DAEMON_PORT}\n`,
   );
-}
-
-async function ensureDaemonAlive(): Promise<void> {
-  if (await isDaemonAlive()) return;
-
-  spawnDaemonDetached();
-
-  const deadline = Date.now() + DAEMON_START_TIMEOUT_MS;
-  while (Date.now() < deadline) {
-    await sleep(200);
-    if (await isDaemonAlive()) return;
-  }
-  throw new Error(
-    `uemcp daemon did not become reachable on ${DAEMON_HOST}:${DAEMON_PORT} within ${DAEMON_START_TIMEOUT_MS}ms`,
-  );
-}
-
-async function isDaemonAlive(): Promise<boolean> {
-  return new Promise<boolean>((resolve) => {
-    const req = http.request(
-      {
-        host: DAEMON_HOST,
-        port: DAEMON_PORT,
-        path: '/health',
-        method: 'GET',
-        timeout: 800,
-      },
-      (res) => {
-        res.resume();
-        resolve(res.statusCode === 200);
-      },
-    );
-    req.on('error', () => resolve(false));
-    req.on('timeout', () => {
-      req.destroy();
-      resolve(false);
-    });
-    req.end();
-  });
-}
-
-function spawnDaemonDetached(): void {
-  const entry = process.argv[1];
-  if (!entry) {
-    throw new Error('Cannot spawn daemon: process.argv[1] is unset');
-  }
-  const child = spawn(process.execPath, [entry, 'daemon'], {
-    detached: true,
-    stdio: 'ignore',
-    windowsHide: true,
-  });
-  child.unref();
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
 }

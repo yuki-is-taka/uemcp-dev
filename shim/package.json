@@ -1,6 +1,6 @@
 {
   "name": "@yuki-is-taka/uemcp",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Auto-starting stdio MCP server that bridges Claude Code to Unreal Engine editors via UE's Python Remote Execution. Launcher per session; singleton HTTP daemon fans in to share the UE connection.",
   "type": "module",
   "main": "dist/index.js",
